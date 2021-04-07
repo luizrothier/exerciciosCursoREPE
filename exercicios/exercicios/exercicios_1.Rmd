@@ -1,0 +1,630 @@
+---
+title: "Exercícios Manipulação de Dados"
+author: "Bruno Crotman"
+date: "27/10/2020"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+
+library(tidyverse)
+library(readxl)
+library(GGally)
+library(stats)
+library(gt)
+library(janitor)
+library(gtsummary)
+library(broom)
+
+```
+
+## World Happiness Report
+
+O [World Hapiness Report](https://worldhappiness.report/) é uma pesquisa a respeito do grau de felicidade da população dos países, e tambem uma tentativa de entender os determinantes deste grau de felicidade.
+
+### Exercício 1 - Leitura de CSVs separados por ano
+
+Os dados para o primeiro exercício estão dentro da pasta dados\_ex1.
+
+Veja que estes dados estão separados em arquivos por ano.
+
+Eles mostram o índice de felicidade de cada país ao longo dos anos e o impacto estimado que cada componente tem no índice.
+
+Faça um script que leia estes arquivos de forma que tenhamos um tibble chamado "dados" com os dados de todos os anos empilhados.
+
+Para vamos usar a função abaixo, que já está pronta. Ela resolve alguns problemas de leitura dos arquivos.
+
+```{r funcao_leitura}
+
+regioes <- read_rds("dados_apoio/regions.rds")
+
+
+le_arquivo_hapiness <- function (arquivo){
+
+
+  vazio <- tibble(
+          country = character(),
+          country_or_region = character(),          
+          region = character(),
+          happiness_score = numeric(),
+          score = numeric(),
+          economy_gdp_per_capita = numeric(),
+          gdp_per_capita = numeric(),
+          family = numeric(),
+          social_support = numeric(),
+          health_life_expectancy = numeric(),
+          healthy_life_expectancy = numeric(),
+          freedom = numeric(),
+          freedom_to_make_life_choices = numeric(),
+          trust_government_corruption = numeric(),
+          perceptions_of_corruption = numeric(),
+          generosity = numeric()
+        )
+    
+    
+  read_csv(arquivo) %>% 
+    janitor::clean_names() %>% 
+    select(
+      any_of(
+        c(
+          "country",
+          "country_or_region",          
+          "region",
+          "happiness_score",
+          "score",
+          "economy_gdp_per_capita",
+          "gdp_per_capita",
+          "family",
+          "social_support",
+          "health_life_expectancy",
+          "healthy_life_expectancy",
+          "freedom",
+          "freedom_to_make_life_choices",
+          "trust_government_corruption",
+          "perceptions_of_corruption",
+          "generosity"
+        )
+      )
+    ) %>%
+    mutate(
+      across(
+        .cols = !matches("country|region") ,
+        .fns = as.numeric
+      )
+    ) %>% 
+    bind_rows(
+      vazio
+    ) %>% 
+    mutate(
+      country = 
+        if_else(
+          is.na(country), 
+          country_or_region, 
+          country
+        ),
+      happiness_score = 
+        if_else(
+          is.na(happiness_score), 
+          score, 
+          happiness_score
+        ),
+      gdp_per_capita = 
+        if_else(
+          is.na(gdp_per_capita), 
+          economy_gdp_per_capita, 
+          gdp_per_capita
+        ),
+      social_support = 
+        if_else(
+          is.na(family), 
+          social_support, 
+          family),
+      healthy_life_expectancy = 
+        if_else(
+          is.na(healthy_life_expectancy), 
+          health_life_expectancy, 
+          healthy_life_expectancy
+        ),
+      freedom = 
+        if_else(
+          is.na(freedom_to_make_life_choices), 
+          freedom, 
+          freedom_to_make_life_choices
+        ),
+      trust_government_corruption = 
+        if_else(
+          is.na(trust_government_corruption), 
+          perceptions_of_corruption, 
+          trust_government_corruption
+        ),
+      freedom = if_else(
+        is.na(freedom_to_make_life_choices), 
+        freedom, 
+        freedom_to_make_life_choices
+      )
+    ) %>% 
+    select(
+      country,
+      happiness_score,
+      gdp_per_capita,
+      social_support,
+      healthy_life_expectancy,
+      freedom,
+      trust_government_corruption,
+      freedom
+    ) %>% 
+    left_join(
+      regioes,
+      by = c("country")
+    )
+
+}
+
+```
+
+O primeiro exercício é efetuar a leitura dos arquivos que estão na pasta dados\_ex1. Para isso siga os seguintes passos, encadeados com pipe **%\>%** :
+
+-   use **list.file()** para listar os arquivos na pasta "dados\_ex1". Se você usar **list.files("dados\_ex1")** já vai pegar o diretório correto, pois ele é relativo
+-   use **enframe(name = "arquivo\_ano")** em cima da lista pra criar um dataframe. Lembre que encadeando com o pipe essa função já vai receber como primeiro parâmetro o tibble
+-   use **mutate()** pra criar uma nova coluna com o conteúdo de cada arquivo, chamando **map()**. Use **str\_glue()** pra montar o caminho completo do arquivo
+-   use **unnest()** para expandir o conteúdo
+-   use **str\_remove()** pra retirar a extensão csv e ter uma coluna com o ano
+-   use mutate com **as.integer()** pra transformar o ano num campo inteiro
+
+Use o chunk abaixo:
+
+```{r questao1_leitura, code=xfun::read_utf8("chunks_ex1/le_dados.R"), echo=FALSE}
+
+
+```
+
+O tibble deve ficar assim
+
+```{r}
+
+glimpse(dados)
+
+```
+
+### Exercício 2 - Cálculo de um delta
+
+Crie um tibble apenas com os campos country, ano e happiness\_score, selecionando essas colunas com **select()**.
+
+Adicione uma coluna com o delta:
+
+$$ delta_t = happiness\_score_t - happiness\_score_{t-1} $$
+
+Para isso use a função **lag()** e **mutate()**. Não esqueça de usar o **group\_by()** para que a operação seja realizada dentro de cada país. Não esqueça da **arrange()** antes da operação, para a ordem das linhas esteja correta. É uma boa prática, também, dar um **ungroup()** assim que suas operações que devem ser feitas em grupo acabarem.
+
+Crie um novo tibble de nome dados\_delta.
+
+```{r questao2_delta, code=xfun::read_utf8("chunks_ex1/delta.R"), echo=FALSE}
+
+
+
+```
+
+Podemos ver os eventos em que houve um aumento mais acentuado de um ano pro outro
+
+```{r}
+
+dados_delta %>% 
+  slice_max(n = 10, order_by = delta ) %>% 
+  gt()
+
+```
+
+Podemos ver, também, os eventos em que houve uma queda mais acentuada de um ano pro outro
+
+```{r}
+
+dados_delta %>% 
+  slice_min(n = 10, order_by = delta ) %>% 
+  gt()
+
+```
+
+### Exercício 3 - Filtro dos dados mais recentes
+
+Gere um tibble, a partir de "dados", que contenha apenas os resultados do último ano.
+
+Use a função **filter()** e a função **max()**
+
+Chame o novo tibble de dados\_recentes
+
+```{r code=xfun::read_utf8("chunks_ex1/recentes.R"), echo = FALSE}
+
+
+
+```
+
+Podemos ver os países mais felizes de acordo com a última pesquisa
+
+```{r}
+
+dados_recentes %>% 
+  select(
+    country,
+    happiness_score
+  ) %>% 
+  slice_max(n = 10, order_by = happiness_score) %>% 
+  gt()
+
+
+
+
+```
+
+```{r}
+
+dados_recentes %>% 
+  select(
+    country,
+    happiness_score
+  ) %>% 
+  slice_min(n = 10, order_by = happiness_score) %>% 
+  gt()
+
+
+```
+
+### Exercício 4 - Criando em uma só operação uma agregação de várias colunas
+
+Gere um **tibble()** chamado dados\_media que contenha mediana de todos os campos de tipo numeric, por região para os dados mais recentes, que vc calculou em um exercício anterior.
+
+Para isso:
+
+-   Agrupe por região
+
+-   Use a função **summarise()** junto com **across(),** como na construção abaixo, usando como função agregadora a **median()**
+
+-   Lembre que ao passar **median()** não estamos comandando a execução imediata da função, mas sim informando qual função deve ser usada pela **summarise(),** portanto devemos passar sem parênteses
+
+```{r, eval=FALSE }
+
+tib_resultado <- tib_entrada %>% 
+  group_by(
+    campo1, campo2
+  ) %>% 
+  summarise(
+    across(
+      .cols = where(is.numeric) & !where(is.integer),
+      .fns = funcao_agregadora
+    )
+  )
+  
+
+```
+
+```{r questao4_median,code=xfun::read_utf8("chunks_ex1/median.R"), echo = FALSE  }
+
+
+
+```
+
+O tibble deve ficar como abaixo
+
+```{r}
+
+dados_median %>% 
+  arrange(desc(happiness_score)) %>% 
+  gt() %>% 
+  cols_label(
+    region = "Região",
+    happiness_score = "Felicidade",
+    gdp_per_capita = "PIB",             
+    social_support = "Social",
+    healthy_life_expectancy = "Anos de vida",
+    freedom = "Liberdade",                   
+    trust_government_corruption = "Corrupção"   
+  ) %>% 
+  fmt_number(
+    columns = 2:7,
+    dec_mark = ",",
+    decimals = 2
+  )
+
+
+
+```
+
+### Exercício 5 - Ignorando os NAs
+
+Note que há um valor NA para a coluna corrupção. Isso aconteceu porque há um valor faltando para um dos países.
+
+Para fazer a função **median()** ignorar os valores faltantes, podemos passar o parâmetro na.rm = TRUE. Entretanto, isso vai nos forçar a usar parênteses. Precisamos indicar que não estamos comandando a chamada imediata da função, por isso precisamos colocar o operador \~ antes de **median(x = .x, na.rm = TRUE).** Note também que precisamos indicar que os valores das colunas onde essa função será aplicada serão passados para o parãmetrox da função. Esses valores vêm normados de .x
+
+No chunk abaixo, faça essa adaptação
+
+```{r questao5_median_sem_na,code=xfun::read_utf8("chunks_ex1/median_sem_na.R"), echo = FALSE  }
+
+
+
+```
+
+### Exercício 6 - Lendo dados para estimar o modelo
+
+Os dados que vimos anteriormente são resultado do modelo já executado.
+
+Os valores do índice de felicidade são retirados de uma pesquisa que pergunta diretamente isso. Os impactos são estimados através de uma regressão linear.
+
+O modelo da regressão linear é o seguinte:
+
+$$
+Felicidade_{t, p} = \alpha + \beta_{PIB} \cdot  PIB_{t,p} +  \beta_{Social} \cdot  Social_{t,p} + \beta_{AnosVida} \cdot  AnosVida_{t,p} + \\ \beta_{Liberdade} \cdot  Liberdade_{t,p} + \beta_{Generosidade} \cdot  Generosidade_{t,p}  + \beta_{Corrupcao} \cdot  Corrupcao_{t,p} + \epsilon
+$$
+
+Como não há dados para todos os países em todos os períodos, essa é uma pooled regression.
+
+Os dados brutos que podem ser usados para estimar estes betas estão disponíveis em uma planilha Excel dentro da pasta dados\_regressao.
+
+Leia esses dados e coloque em um tibble chamado dados\_regressao.
+
+-   Use a função **read\_excel()** da biblioteca **readxl**
+
+-   Logo após a leitura, passe o tibble pela função **clean\_names()** da biblioteca **janitor** para que os nomes de colunas esquisitos virem nomes decentes
+
+-   Selecione os campos representando país, felicidade, pib, suporte social, anos de vida saudável, liberdade, generosidade e corrupção. Nomeie como
+
+    -   country\_name
+
+    -   year
+
+    -   happiness
+
+    -   gdp
+
+    -   social
+
+    -   health
+
+    -   freedom
+
+    -   generosity
+
+    -   corruption
+
+```{r questao6_le_dados_regressao,code=xfun::read_utf8("chunks_ex1/le_dados_regressao.R"), echo = FALSE}
+
+
+
+```
+
+O tibble deve ficar desta forma
+
+```{r}
+
+glimpse(dados_regressao)
+
+```
+
+A função ggpairs() posibilita a visualização das relações entre as variáveis duas a duas
+
+```{r}
+
+
+ggpairs(dados_regressao %>%  
+          select(
+              happiness,
+              gdp,
+              social,
+              health,
+              freedom,
+              generosity,
+              corruption
+            
+          )
+        ,
+        lower = list(continuous = wrap(ggally_smooth_loess, alpha = 0.1, size = 1, color = "blue"))
+    
+  ) +
+  theme_minimal()
+
+
+```
+
+A função **lm()** possibilita a estimação de um modelo linear
+
+```{r}
+
+modelo <- lm(formula = happiness ~     
+             gdp +
+             social +
+             health +
+             freedom +
+             generosity +
+             corruption,
+    
+    
+   data = dados_regressao)
+
+
+
+
+
+```
+
+Podemos ver que os betas são significantes e o $R^2$, alto.
+
+```{r}
+
+summary(modelo)
+
+
+
+```
+
+Entretanto cada variável explicativa está em uma unidade diferente, e muitas destas unidades não têm um significado intuitivo.
+
+Isso dificulta a comparação dos $\beta$
+
+### Exercício 7 - Normalizando dados
+
+Vamos normalizar os dados usando o seguinte cálculo:
+
+$$
+var\_norm_{i} = \frac{var_{i} - mediana(var)}{mad(var)}
+$$
+
+onde mad é a [mediana dos desvios absolutos](https://en.wikipedia.org/wiki/Median_absolute_deviation).
+
+Normalize os dados do tibble dado\_regressao e crie um tibble chamado dados\_regressao\_normalizados.
+
+-   Para levar em conta o fato de que o mundo evolui ao longo dos anos, agrupe por ano
+
+-   Use a função **mutate()** e a função **across().** Use **where(is.numeric)** para selecionar as colunas que vem ser normalizadas
+
+-   Use a função **mad()** da biblioteca **stats**
+
+```{r questao7_normalizacao_mads,code=xfun::read_utf8("chunks_ex1/normalizacao_mads.R")}
+
+
+```
+
+Com os dados normalizados, dá pra ter uma ideia melhor do impacto de cada variável
+
+```{r}
+
+
+modelo_normalizados <- lm(formula = happiness ~     
+             gdp +
+             social +
+             health +
+             freedom +
+             generosity +
+             corruption,
+    
+    
+   data = dados_regressao_normalizados)
+
+
+summary(modelo_normalizados)
+
+
+
+
+```
+
+### Exercício 8 - Rodando o modelo pra cada regiões
+
+O código abaixo adiciona as regiões ao tibble normalizado
+
+```{r}
+
+dados_reg_continente <- dados_regressao_normalizados %>% 
+    left_join(
+      regioes,
+      by = c("country_name" = "country")
+    )
+
+
+glimpse(dados_reg_continente)
+
+```
+
+Vamos, agora, rodar o modelo em cada região.
+
+Para isso, precisamos:
+
+-   Aninhar todos os campos que não sejam região usando **nest()**
+
+-   Use a função **rowwise()** para determinar que as operações a partir daí serão feitas linha a linha.
+
+-   Criar um novo campo com o resultado da estimação do modelo, usando **mutate(),** e **lm().** Note que **map()** não é necessário, pois já foi determinado que as operações ocorrerão linha a linha.
+
+-   Criar um novo campo de nome coefs com os coeficientes extraídos do resultado do modelo, usando **mutate(),** **tidy()**
+
+-   Dê **ungroup()** pois as próximas operações podem ser feitas vetorialmente para o tibble inteiro
+
+-   Retire as colunas dados, modelo
+
+-   Dê **unnest()** em coefs
+
+-   Selecione somente os campos region, estimate, term
+
+```{r questao8_rodando_regioes,code=xfun::read_utf8("chunks_ex1/rodando_regioes.R")}
+
+
+```
+
+```{r}
+
+coefs <- dados_reg_continente_executado %>% 
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) %>% 
+  janitor::clean_names()
+
+
+coefs %>% 
+  gt() %>% 
+  cols_label(
+    region = "Região",
+    intercept = "Índice com medianas",
+    gdp = "PIB",             
+    social = "Social",
+    health = "Anos de vida",
+    freedom = "Liberdade",     
+    generosity = "Generosidade",
+    corruption = "Corrupção"   
+  ) %>% 
+  fmt_number(
+    columns = 2:8,
+    dec_mark = ",",
+    decimals = 2
+  )
+  
+
+
+```
+
+```{r}
+
+
+ggplot(
+  dados_reg_continente_executado %>% 
+    filter(
+      term != "(Intercept)",
+      !is.na(region)
+    )
+  ) + 
+  geom_col(
+    aes(
+      y = estimate,
+      x = region,
+      fill = region
+    )
+  ) +
+  geom_hline(
+    color = "black",
+    yintercept = 0
+  ) +
+  coord_flip() +
+  labs(
+    fill = ""
+  ) +
+  facet_wrap(~term) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90),
+    legend.position = "top",
+    legend.text = element_text(size = 7),
+    legend.key.size = unit(.3, "cm")
+  ) +
+  guides(
+    fill = guide_legend(
+      nrow = 4
+    )
+  )
+  
+
+
+
+```
